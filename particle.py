@@ -1,6 +1,7 @@
 import pygame
-#import ray
+import ray
 import math
+import time
 
 WIDTH, HEIGHT = 1920, 1080
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -10,7 +11,7 @@ BLACK = (0, 0, 0)
 WHITE = (255,255,255)
 RED = (255,0,0)
 FPS = 60
-PARTICLES = 20000 
+PARTICLES = 10000
 PARTICLES_PER_RING = 1000
 RADIUS_OF_INNER = 100
 DIS_BT_RINGS = 10
@@ -62,10 +63,10 @@ def extract_positions(frame):
         positions.append(i[0])
     return positions
 
-
-def calculate_new_frame(previous_frame):
+@ray.remote
+def calculate_sub_section(previous_frame, start, stop):
     new_frame = []
-    for particle_index in range(len(previous_frame)):
+    for particle_index in range(start, stop):
         current_particle = previous_frame[particle_index]
         new_vx = current_particle[1][0]
         new_vy = current_particle[1][1]
@@ -86,11 +87,27 @@ def calculate_new_frame(previous_frame):
         new_frame.append(new_particle)
     return new_frame
 
-                
-                
-        
+def calculate_new_frame(previous_frame,p):
+    new_frame = []
+    num_of_each = PARTICLES // p
+    remainder = PARTICLES % p
+    count = 0
+    obj_id = ray.put(previous_frame)
+    result_ids = []
+    for i in range(p):
+        if i == p-1:
+            result_ids.append(calculate_sub_section.remote(obj_id, ray.put(count), ray.put(count+num_of_each+remainder)))
+        else:
+            result_ids.append(calculate_sub_section.remote(obj_id, ray.put(count), ray.put(count+num_of_each)))
+        count += num_of_each
+    for lest in ray.get(result_ids):
+        new_frame = new_frame + lest
+    return new_frame
 
-def calculate():
+def calculate(): 
+    start = time.time()
+    p = int(ray.available_resources()['CPU'])
+    p=1
     frames = []
     previous_frame = initialize()
     first_frame = extract_positions(previous_frame)
@@ -98,15 +115,17 @@ def calculate():
     frames.append(first_frame)
     
     for frame in range(FRAMES):
-        new_frame = calculate_new_frame(previous_frame)
+        new_frame = calculate_new_frame(previous_frame,p)
 
         frames.append(extract_positions(new_frame))
         previous_frame = new_frame
         print(frame)
-
+    end = time.time()
+    print(end-start)
     return frames
 
 def main():
+    ray.init()
     positions = calculate()
     render(positions)
 
