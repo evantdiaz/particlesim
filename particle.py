@@ -107,7 +107,7 @@ def calculate_new_frame(previous_frame,p):
 def calculate(): 
     start = time.time()
     p = int(ray.available_resources()['CPU'])
-    p=1
+    p=2
     frames = []
     previous_frame = initialize()
     first_frame = extract_positions(previous_frame)
@@ -123,6 +123,14 @@ def calculate():
     end = time.time()
     print(end-start)
     return frames
+
+def main():
+    ray.init()
+    positions = calculate()
+    render(positions)
+
+if __name__ == "__main__":
+    main()
 
 def main():
     ray.init()
