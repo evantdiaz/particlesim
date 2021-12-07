@@ -131,11 +131,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-def main():
-    ray.init()
-    positions = calculate()
-    render(positions)
-
-if __name__ == "__main__":
-    main()
