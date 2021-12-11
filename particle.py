@@ -11,7 +11,7 @@ BLACK = (0, 0, 0)
 WHITE = (255,255,255)
 RED = (255,0,0)
 FPS = 60
-PARTICLES = 10000
+PARTICLES = 3000
 PARTICLES_PER_RING = 1000
 RADIUS_OF_INNER = 100
 DIS_BT_RINGS = 10
@@ -43,10 +43,10 @@ def render(positions):
 
     pygame.quit()
 
-def initialize():
+def initialize(particles):
     positions = []
     positions.append(((WIDTH/2, HEIGHT/2), (0, 0), 10000))
-    for index in range(PARTICLES):
+    for index in range(particles):
         r = RADIUS_OF_INNER+(math.floor(index/PARTICLES_PER_RING))*DIS_BT_RINGS
         ang = index * math.pi * 2 / PARTICLES_PER_RING
         px = .4*r*math.cos(ang) + WIDTH/2
@@ -64,14 +64,14 @@ def extract_positions(frame):
     return positions
 
 @ray.remote
-def calculate_sub_section(previous_frame, start, stop):
+def calculate_sub_section(previous_frame, start, stop, timer):
     new_frame = []
     for particle_index in range(start, stop):
         current_particle = previous_frame[particle_index]
         new_vx = current_particle[1][0]
         new_vy = current_particle[1][1]
-        # for each_particle_index in range(len(previous_frame)):
-        for each_particle_index in range(1):
+        for each_particle_index in range(len(previous_frame)):
+        # for each_particle_index in range(1):
             each_particle = previous_frame[each_particle_index]
             if each_particle_index != particle_index:
                 dx = each_particle[0][0] - current_particle[0][0]
@@ -85,48 +85,52 @@ def calculate_sub_section(previous_frame, start, stop):
                 new_vy += dy/m *ay* DT
         new_particle = ((new_vx*DT+current_particle[0][0], new_vy*DT+current_particle[0][1]), (new_vx,new_vy), current_particle[2])
         new_frame.append(new_particle)
+
     return new_frame
 
-def calculate_new_frame(previous_frame,p):
+def calculate_new_frame(previous_frame,p, particles):
     new_frame = []
-    num_of_each = PARTICLES // p
-    remainder = PARTICLES % p
+    num_of_each = particles // p
+    remainder = particles % p
     count = 0
     obj_id = ray.put(previous_frame)
     result_ids = []
     for i in range(p):
+        start = time.time()
         if i == p-1:
-            result_ids.append(calculate_sub_section.remote(obj_id, ray.put(count), ray.put(count+num_of_each+remainder)))
+            result_ids.append(calculate_sub_section.remote(obj_id, ray.put(count), ray.put(count+num_of_each+remainder), ray.put(start)))
         else:
-            result_ids.append(calculate_sub_section.remote(obj_id, ray.put(count), ray.put(count+num_of_each)))
+            result_ids.append(calculate_sub_section.remote(obj_id, ray.put(count), ray.put(count+num_of_each),ray.put(start)))
         count += num_of_each
+    
     for lest in ray.get(result_ids):
         new_frame = new_frame + lest
     return new_frame
 
-def calculate(): 
+def calculate(particles, p): 
     start = time.time()
-    p = int(ray.available_resources()['CPU'])
-    p=2
     frames = []
-    previous_frame = initialize()
+    previous_frame = initialize(particles)
     first_frame = extract_positions(previous_frame)
 
     frames.append(first_frame)
+
+    timecost = 0
     
     for frame in range(FRAMES):
-        new_frame = calculate_new_frame(previous_frame,p)
+        new_frame = calculate_new_frame(previous_frame,p, particles)
 
         frames.append(extract_positions(new_frame))
         previous_frame = new_frame
         print(frame)
     end = time.time()
+    print("timecost: " + str(timecost))
     print(end-start)
     return frames
 
 def main():
     ray.init()
-    positions = calculate()
+    positions = calculate(PARTICLES, int(ray.available_resources()['CPU']))
     render(positions)
 
 if __name__ == "__main__":
